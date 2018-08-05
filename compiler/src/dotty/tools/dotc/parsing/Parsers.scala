@@ -1164,6 +1164,7 @@ object Parsers {
         }
       case WHILE =>
         atPos(in.skipToken()) {
+          accept(LPAREN)
           val cond = condExpr(DO)
           newLinesOpt()
           val body = expr()
