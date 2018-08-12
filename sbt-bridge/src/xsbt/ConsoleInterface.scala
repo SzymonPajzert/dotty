@@ -51,6 +51,10 @@ class ConsoleInterface {
       } ++
       Array("-classpath", classpathString)
 
-    new ReplDriver(completeArgs, classLoader = Some(loader)).runUntilQuit()
+    new ReplDriver(
+      completeArgs,
+      classLoader = Some(loader),
+      initialCommands = Some(initialCommands),
+      cleanupCommands = Some(cleanupCommands)).runUntilQuit()
   }
 }

@@ -1,6 +1,6 @@
 package dotty.tools.repl
 
-import java.io.PrintStream
+import java.io.{PrintStream, OutputStream}
 
 import dotty.tools.dotc.ast.Trees._
 import dotty.tools.dotc.ast.{tpd, untpd}
@@ -54,6 +54,8 @@ case class State(objectIndex: Int,
 /** Main REPL instance, orchestrating input, compilation and presentation */
 class ReplDriver(settings: Array[String],
                  out: PrintStream = Console.out,
+                 initialCommands: Option[String] = None,
+                 cleanupCommands: Option[String] = None,
                  classLoader: Option[ClassLoader] = None) extends Driver {
 
   /** Overridden to `false` in order to not have to give sources on the
@@ -121,13 +123,28 @@ class ReplDriver(settings: Array[String],
       }
     }
 
+    def readAll(rawCommands: Option[String])(initialState: State): State = {
+      rawCommands match {
+        case None => initialState
+        case Some(cmds) => {
+          val command = ParseResult(cmds)(rootCtx)
+          interpret(command)(initialState)
+        }
+      }
+    }
+
     @tailrec def loop(state: State): State = {
       val res = readLine(state)
       if (res == Quit) state
       else loop(interpret(res)(state))
     }
 
-    try withRedirectedOutput { loop(initState) }
+    try {
+      // TODO: how to chain it well?
+      val a = withSilencedOutput { readAll(initialCommands)(initState) }
+      val b = withRedirectedOutput { loop(a) }
+      withSilencedOutput { readAll(cleanupCommands)(b) }
+    }
     finally terminal.close()
   }
 
@@ -136,8 +153,19 @@ class ReplDriver(settings: Array[String],
     interpret(parsed)
   }
 
+  private def ignored: PrintStream = {
+    val ignoringOutputStream = new OutputStream {
+      def write(b: Int): Unit = {}
+    }
+
+    new PrintStream(ignoringOutputStream)
+  }
+
   private def withRedirectedOutput(op: => State): State =
     Console.withOut(out) { Console.withErr(out) { op } }
+
+  private def withSilencedOutput(op: => State): State =
+    Console.withOut(ignored) { Console.withErr(out) { op } }
 
   private def newRun(state: State) = {
     val run = compiler.newRun(rootCtx.fresh.setReporter(newStoreReporter), state.objectIndex)
